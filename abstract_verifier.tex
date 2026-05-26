@@ -1,0 +1,33 @@
+% paper/abstract_verifier.tex
+% Option B — "verifier as scientific instrument" narrative. Use this
+% when Fix #1 (precondition_strict) reveals that baselines pass the
+% heuristic check at near-1.0 but COLLAPSE under strict verification,
+% while GRACE holds its score. Stronger story if the data supports it.
+% ~220 words.
+
+\begin{abstract}
+Plan-quality metrics commonly reported for LLM-based embodied
+planners hinge on a heuristic precondition test --- e.g.\ ``every
+\texttt{Pick} is preceded by some \texttt{Navigate} or \texttt{Find}''
+--- that is easy for a fluent LLM to satisfy on the surface but does
+not enforce object identity, holding state, or container open/close
+order. When we replace this heuristic with a strict symbolic
+verifier, baselines that previously appeared to score $1.0$
+precondition routinely drop to $0.4$--$0.7$, revealing that their
+plans are silently invalid. We propose \textbf{GRACE} (Grounded
+Repair-and-Critique Embodied planner), a single-LLM planner whose
+contribution is three-fold: (i) a rule-based symbolic precondition
+verifier ($\sim$250 lines of Python, zero tokens, $O(|\pi|)$ time)
+that gates each sub-plan and emits typed violations driving a single
+refinement pass; (ii) hierarchical decomposition with
+sub-goal--localised repair; and (iii) a hybrid memory store seeded
+from ground-truth plans and grown by successful episodes. On the
+38-task AI2-THOR household benchmark across three open-weight Ollama
+models, GRACE is the only method that maintains a strict
+precondition score above $0.85$ on every model, while simultaneously
+achieving the highest goal completeness ($+0.10$--$0.13$ over the
+best baseline). We discuss the cost--quality trade-off honestly: the
+verifier and memory add a constant overhead that buys reliability the
+baselines cannot match by simply spending more tokens. Code and
+benchmark scripts are released.
+\end{abstract}

@@ -1,0 +1,203 @@
+% paper/method.tex
+% LaTeX outline of the GRACE Method section.
+% Paste into a paper template (acmart, IEEEtran, llncs, etc.).
+
+\section{Method}\label{sec:method}
+
+We propose \textbf{GRACE}, a planner for embodied LLM agents that
+integrates three components into a single inference pipeline:
+(i) a lightweight, rule-based symbolic precondition verifier,
+(ii) hierarchical decomposition with sub-goal--localised repair, and
+(iii) a hybrid retrieval memory seeded with curated ground-truth plans
+and grown by successful runtime episodes.
+
+Figure~\ref{fig:overview} summarises the architecture. The remainder of
+this section formalises the problem (\S\ref{sec:problem}), then describes
+each component in turn (\S\ref{sec:verifier}--\S\ref{sec:memory}),
+and finally presents the algorithms for initial planning and repair
+(\S\ref{sec:algorithm}).
+
+\subsection{Problem formulation}\label{sec:problem}
+
+A household task is a tuple $\tau = (\ell, \mathcal{S}_0)$ where
+$\ell$ is a natural-language description and
+$\mathcal{S}_0 = (o_0, V_0)$ is the initial scene context: a textual
+observation $o_0$ and a set of visible objects $V_0$. A plan
+$\pi = (a_1, \dots, a_T)$ is a sequence of actions
+$a_t = (\mathrm{verb}_t, \mathrm{obj}_t)$ drawn from a fixed
+vocabulary $\mathcal{A}$ (Table~\ref{tab:actions} —
+\texttt{MoveTo}, \texttt{Find}, \texttt{Pick}, \texttt{Place},
+\texttt{Open}, \texttt{Close}, \texttt{TurnOn}, \texttt{TurnOff}, etc.).
+
+Each action has a precondition $\mathrm{pre}(a)$ and an effect
+$\mathrm{eff}(a)$ defined over a symbolic state $\sigma$ with five
+fields: $\mathrm{arrived}, \mathrm{found}, \mathrm{holding},
+\mathrm{opened}, \mathrm{on}$. A plan is \emph{symbolically valid}
+iff $\mathrm{pre}(a_t)$ holds in
+$\sigma_{t-1} = \mathrm{eff}(a_{t-1}) \circ \cdots \circ \mathrm{eff}(a_1)(\sigma_0)$
+for every $t$. We let $\mathcal{V}(\pi, \sigma_0) \in \{\text{OK}\}
+\cup \mathcal{R}$ denote the verifier verdict, where $\mathcal{R}$ is the
+typed set of violation reasons (e.g.,
+\textsc{NoFindBeforePick}, \textsc{PlaceWrongLocation}).
+
+The planner must produce a $\pi$ that is symbolically valid and
+\emph{achieves} the underlying goal when executed in the AI2-THOR
+simulator. We assume access only to an LLM $f_\theta$ and the
+verifier $\mathcal{V}$; we do not assume a PDDL domain or a
+classical planner.
+
+\subsection{Symbolic precondition verifier}\label{sec:verifier}
+
+The verifier is a deterministic, hand-written function in
+$\sim$250 lines of Python over the schema documented in
+\texttt{pyplanner.base.STEP\_SCHEMA}. It is critical to the
+contribution that the verifier \emph{never} invokes an LLM:
+$\mathcal{V}$ runs in $O(|\pi|)$ time, costs zero tokens, and gives a
+\emph{typed} reason for any rejection rather than the free-form
+critique characteristic of self-refinement methods.
+
+Algorithm~\ref{alg:verify} sketches \texttt{simulate}.
+$\mathrm{pre}(\cdot)$ is implemented as a switch over the action's
+verb; the most common rules are:
+\begin{itemize}
+  \item \texttt{Pick} requires $\mathrm{found} \neq \emptyset$
+    and $\mathrm{holding} = \emptyset$.
+  \item \texttt{Place~$r$} requires
+    $\mathrm{holding} \neq \emptyset \wedge \mathrm{arrived} = r$.
+  \item \texttt{Open}/\texttt{Close}/\texttt{TurnOn}/\texttt{TurnOff} require
+    $\mathrm{found} = $ the action's object.
+  \item Container rule: \texttt{PutIn~$c$} requires
+    $c \in \mathrm{opened}$.
+\end{itemize}
+Rejected violations are formatted into a compact natural-language
+feedback block by \texttt{format\_violations\_for\_llm}; we show in
+\S\ref{sec:experiments} that this typed feedback drives more reliable
+single-pass refinement than the free-form critiques used by
+Self-Refine~\cite{madaan2023selfrefine}.
+
+\begin{algorithm}
+\caption{\texttt{simulate}: rule-based plan verification.}\label{alg:verify}
+\begin{algorithmic}[1]
+\State $\sigma \gets \sigma_0$,\ $\mathit{viol} \gets [\,]$
+\For{$t = 1$ \textbf{to} $|\pi|$}
+  \State $(\mathit{ok}, r) \gets \texttt{verifyStep}(a_t, \sigma)$
+  \If{$\neg \mathit{ok}$}
+     \State $\mathit{viol}.\textsc{append}((t, a_t, r))$;\ \textbf{break}
+  \EndIf
+  \State $\sigma \gets \texttt{apply}(a_t, \sigma)$
+\EndFor
+\State \Return $(\mathit{viol}=\emptyset,\ \mathit{viol},\ \sigma)$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Hierarchical decomposition with sub-goal blocks}\label{sec:hierarchy}
+
+GRACE decomposes the task into 2--5 sub-goals
+$g_1, \dots, g_K$ via one high-level LLM call. Each sub-goal is then
+expanded by a second-level LLM call into a contiguous block of
+steps $\pi^{(k)}$. We retain the sub-goal boundaries explicitly as
+typed \texttt{\_SubgoalBlock} objects; the flat plan
+$\pi = \pi^{(1)} \mathbin{\Vert} \cdots \mathbin{\Vert} \pi^{(K)}$ is
+produced only at execution time.
+
+Keeping the boundaries lets us perform sub-goal--localised repair
+(\S\ref{sec:algorithm}). To the best of our knowledge, this is the
+first work to combine hierarchical LLM planning with
+\emph{suffix-only} repair scoped to the failed sub-goal; prior
+hierarchical methods (e.g.~\cite{ajay2023hip},
+HierarchicalFewShot in pyplanner) replan the entire remainder of the
+task on failure.
+
+\subsection{Hybrid memory retrieval}\label{sec:memory}
+
+GRACE conditions both decomposition and expansion on $k$ retrieved
+exemplars from a hybrid store $\mathcal{M} = \mathcal{M}_{\text{seed}}
+\cup \mathcal{M}_{\text{live}}$:
+
+\begin{itemize}
+  \item $\mathcal{M}_{\text{seed}}$ is loaded once from a curated
+    ground-truth file (38 simulator-verified plans). Seed entries
+    guarantee cold-start coverage even before any episode has been
+    logged. Action names are normalised to the canonical vocabulary
+    via \texttt{normalize\_plan} before being stored.
+  \item $\mathcal{M}_{\text{live}}$ is appended whenever the agent
+    successfully completes a task. Persistence is a JSONL file;
+    embedding search is optional via Chroma~\cite{chroma}, with a
+    Jaccard-similarity fallback so the system runs on a minimal
+    install.
+\end{itemize}
+
+Retrieval returns the top-$k$ exemplars by similarity to the task
+description $\ell$. Each exemplar contributes a typed
+$(\mathrm{task}, \mathrm{reasoning}, \mathrm{plan})$ triple
+that the prompt assembler renders into a structured
+\texttt{=== RETRIEVED EXAMPLE === } block — the same shape used by
+pyplanner's \texttt{HierarchicalFewShotPlanner}, so the prompt
+engineering is shared and only the \emph{contents} of the store
+differ.
+
+\subsection{Algorithms}\label{sec:algorithm}
+
+Algorithms~\ref{alg:generate} and~\ref{alg:replan} present
+$\textsc{Plan}$ and $\textsc{Replan}$ in full.
+$\textsc{Plan}$ costs $1 + K + R$ LLM calls, where $K$ is the number
+of sub-goals and $R \leq K$ is the number of refinement passes
+triggered by verifier rejection. $\textsc{Replan}$ costs at most two
+LLM calls and \emph{never} replans steps that have already been
+executed.
+
+\begin{algorithm}
+\caption{\textsc{Plan} — GRACE initial planning.}\label{alg:generate}
+\begin{algorithmic}[1]
+\Require task $\ell$, observation $o$, visible objects $V$
+\State $E \gets \textsc{Retrieve}(\mathcal{M}, \ell, k)$
+\State $g_{1:K} \gets f_\theta^{\text{decompose}}(\ell, E)$
+\State $\sigma \gets (\emptyset, \emptyset, \emptyset, \emptyset, \emptyset),\ V$
+\State $B \gets [\,]$
+\For{$k = 1$ \textbf{to} $K$}
+  \State $\pi^{(k)} \gets f_\theta^{\text{expand}}(g_k, \sigma, E)$
+  \For{$j = 1$ \textbf{to} $\texttt{max\_refines}$}
+    \State $(\mathit{ok},\mathit{viol},\sigma') \gets \mathcal{V}(\pi^{(k)}, \sigma)$
+    \If{$\mathit{ok}$}\ \textbf{break}\ \EndIf
+    \State $\pi^{(k)} \gets f_\theta^{\text{refine}}(g_k, \pi^{(k)}, \mathit{viol})$
+  \EndFor
+  \State $\sigma \gets \texttt{rollForward}(\pi^{(k)}, \sigma)$;\
+        $B.\textsc{append}((g_k, \pi^{(k)}))$
+\EndFor
+\State \Return $\textsc{Flatten}(B)$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{\textsc{Replan} — sub-goal--localised repair.}\label{alg:replan}
+\begin{algorithmic}[1]
+\Require completed steps $C$, failed step $a^\star$, reason $r$
+\State $\sigma^\star \gets \texttt{simulate}(C).\mathrm{final}$
+       \Comment{recover state at failure, no LLM}
+\State $(g^\star, B^{>}) \gets \texttt{locate}(B, |C|)$
+       \Comment{which sub-goal failed; what's still in the future}
+\State $E \gets \textsc{Retrieve}(\mathcal{M}, g^\star, k)$
+\State $\pi^{\text{suf}} \gets f_\theta^{\text{repair}}(g^\star,
+       \sigma^\star, a^\star, r, E)$
+\If{$\neg \mathcal{V}(\pi^{\text{suf}}, \sigma^\star).\mathrm{ok}$}
+  \State $\pi^{\text{suf}} \gets f_\theta^{\text{refine}}(g^\star,
+         \pi^{\text{suf}}, \mathit{viol})$
+\EndIf
+\State \Return $\pi^{\text{suf}} \mathbin{\Vert} \textsc{Flatten}(B^{>})$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{What is novel.}
+Each of the three components has precedent: symbolic verification
+appears in LLM+P~\cite{liu2023llmp} and ISR-LLM~\cite{zhou2024isrllm};
+hierarchical decomposition in HiP~\cite{ajay2023hip}; memory-augmented
+retrieval in LLM-Planner~\cite{song2023llmplanner} and
+ExpeL~\cite{zhao2024expel}. GRACE's contribution is their integration
+into one system under three constraints that differ from prior work:
+(i) the verifier is hand-written and \emph{LLM-free}, costing zero
+tokens; (ii) repair is \emph{strictly local} to the failed sub-goal,
+preserving completed work and untouched future sub-goals; and
+(iii) the memory store is \emph{hybrid} — both seeded from curated
+ground-truth plans and grown from successful runs, with the same
+prompt-block format and a Jaccard fallback when embeddings are
+unavailable.

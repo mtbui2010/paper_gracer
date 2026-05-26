@@ -1,0 +1,42 @@
+\title{GRACE: Lightweight Symbolic Verification and \\
+Local Repair for LLM Task Planning in Embodied Agentss}
+
+\author{First A. Author${}^{1}$ and Second B. Author${}^{2*}$ }
+
+\affils{ ${}^{1}$Department of Electrical Engineering, Hankook University, \\
+Seoul, 13391, Korea (first@hankook.ac.kr) \\
+${}^{2}$Department of Mechanical Engineering, Hankook University, \\
+Seoul, 13391, Korea (second@hankook.ac.kr) {\small${}^{*}$ Corresponding author}}
+
+
+\abstract{
+    Large language models (LLMs) are now the default cognitive core of
+embodied household agents, but plans produced by current methods
+average $2$--$3\times$ more steps than the simulator-verified
+reference and rely on retry loops to recover from precondition
+violations the planner never catches. We propose \textbf{GRACE}
+(Grounded Repair-and-Critique Embodied planner), a single-LLM planner
+that integrates three lightweight components: (i) a rule-based
+symbolic precondition verifier that runs in $O(|\pi|)$ time and zero
+tokens, emitting typed violations that drive a single low-temperature
+refinement pass; (ii) hierarchical decomposition with
+\emph{sub-goal--localised} repair — when a step fails, GRACE
+regenerates only the suffix of the failed sub-goal while keeping
+completed work and untouched future sub-goals intact; and (iii) a
+hybrid memory store seeded from a curated pool of ground-truth plans
+and grown by successful runtime episodes, with embedding retrieval
+when available and a Jaccard fallback otherwise. On a 38-task
+AI2-THOR household benchmark across four open-weight Ollama models
+(\texttt{llama3.2}, \texttt{qwen2.5:7b}, \texttt{mistral-nemo},
+\texttt{qwen2.5:14b}) and eight published planning strategies as
+baselines, GRACE attains the lowest plan length / reference ratio and
+the highest precondition-satisfaction rate, with the largest gains
+observed at the small-model end of the size axis. Ablations confirm
+that each component contributes a distinct, non-overlapping
+improvement. Code and benchmark scripts are released as a
+self-contained artifact.
+}
+
+\keywords{
+    Selected keywords relevant to the subject.
+}

@@ -1,0 +1,110 @@
+% paper/intro_related.tex
+% Skeletons for the Introduction and Related Work sections.
+% Self-contained: paste straight into your paper template.
+
+\section{Introduction}\label{sec:intro}
+
+Large language models (LLMs) are increasingly used as the cognitive
+core of embodied agents — they read a goal in natural language, look
+at a list of available actions, and emit a plan that a low-level
+controller executes~\cite{ahn2022saycan, huang2022innermonologue,
+singh2022progprompt, liang2022codeaspolicies}. The headline result is
+striking: even modest open-weight LLMs achieve high \emph{task
+success} on benchmarks like ALFWorld~\cite{shridhar2020alfworld} and
+AI2-THOR~\cite{kolve2017thor}. Closer inspection, however, reveals a
+hidden cost. Plans produced by current methods average $2$--$3\times$
+more steps than the ground-truth reference\footnote{Measured on
+pyplanner's 38-task AI2-THOR set;
+see \texttt{record\_report.json} in the artifact.}, and execution
+``succeeds'' only because most agents include a generous retry-on-failure
+loop that masks brittle plans behind extra LLM calls.
+
+We argue that two design choices are responsible. First, planners do
+not verify plans against a grounded model of the environment before
+execution — preconditions like \emph{``you must Find an object before
+Picking it''} are encoded only in the LLM's prompt and enforced only
+when the simulator returns an error. Second, on failure, planners
+typically replan the entire remaining task, paying the full token cost
+of re-explaining context that has already been correctly handled. Both
+choices are tractable to fix without retraining the LLM.
+
+We propose \textbf{GRACE} — Grounded Repair-and-Critique Embodied
+planner — a single-LLM planner that integrates three components:
+\begin{enumerate}
+  \item a \textbf{rule-based symbolic precondition verifier}
+        that runs in $O(|\pi|)$ time and zero tokens,
+  \item \textbf{hierarchical decomposition with sub-goal--localised
+        repair} — when a step fails, only the suffix of the failed
+        sub-goal is regenerated, and
+  \item a \textbf{hybrid memory store} that combines a small curated
+        seed pool of ground-truth plans with a growing pool of
+        successful runtime episodes.
+\end{enumerate}
+
+Our contributions are:
+
+\begin{itemize}
+  \item GRACE, an integrated planner whose three components are
+    each lightweight enough to deploy on a single Ollama server
+    (\S\ref{sec:method}).
+  \item A symbolic precondition verifier written in
+    $\sim 250$ lines of Python that operates on the canonical
+    pyplanner action vocabulary and emits typed violation reasons
+    suitable for direct prompt feedback (\S\ref{sec:verifier}).
+  \item An evaluation against eight published planning strategies on
+    the 38-task AI2-THOR benchmark across four model sizes,
+    plus a three-way ablation that isolates the contribution of each
+    component (\S\ref{sec:experiments}).
+\end{itemize}
+
+\section{Related Work}\label{sec:related}
+
+\paragraph{LLM-as-planner.}
+SayCan~\cite{ahn2022saycan} grounds skill selection in a learned
+affordance value; Inner Monologue~\cite{huang2022innermonologue} adds
+textual feedback after each step.
+ProgPrompt~\cite{singh2022progprompt} and Code-as-Policies~\cite{liang2022codeaspolicies}
+push the LLM toward program-style output. LLM+P~\cite{liu2023llmp}
+translates NL to PDDL and delegates to a classical planner;
+LLM-DP~\cite{dagan2023llmdp} maintains a symbolic world model
+alongside the LLM. GRACE differs by keeping the planner LLM-driven
+but inserting a deterministic check between plan and execution.
+
+\paragraph{Reasoning, refinement, and self-critique.}
+Chain-of-Thought~\cite{wei2022cot} elicits intermediate reasoning;
+ReAct~\cite{yao2022react} interleaves thought and action;
+Tree-of-Thoughts~\cite{yao2023tot} searches over reasoning branches.
+Self-Refine~\cite{madaan2023selfrefine} and Reflexion~\cite{shinn2023reflexion}
+critique with the same LLM. GRACE replaces the LLM critic with a
+zero-cost symbolic checker that emits typed feedback — sidestepping
+the well-known LLM self-evaluation bias.
+
+\paragraph{Embodied planning with verification.}
+LLM-Planner~\cite{song2023llmplanner} retrieves few-shot examples by
+embedding similarity. AdaPlanner~\cite{sun2023adaplanner} distinguishes
+in-plan refinement from out-of-plan replanning.
+ISR-LLM~\cite{zhou2024isrllm} validates LLM-emitted PDDL with a
+classical solver. The LLM-Modulo framework~\cite{kambhampati2024llmmodulo}
+generalises ``LLM-generate + external-verifier'' to a wide range of
+tasks. GRACE specialises this idea to embodied household tasks with a
+\emph{hand-written, vocabulary-specific} verifier that costs orders of
+magnitude less than a classical-planner verifier.
+
+\paragraph{Memory-augmented agents.}
+Voyager~\cite{wang2023voyager} stores reusable code skills;
+ExpeL~\cite{zhao2024expel} distills natural-language insights from
+past trajectories; AutoGuide~\cite{fu2024autoguide} produces
+state-conditioned guidelines. GRACE's memory differs by being
+\emph{hybrid}: a curated seed pool gives cold-start coverage, while a
+live pool accumulates successful plans over time, both surfaced via
+the same prompt-block format.
+
+\paragraph{Hierarchical and repair-oriented planning.}
+HiP~\cite{ajay2023hip} and the pyplanner Hierarchical and
+HierarchicalFewShot strategies decompose tasks into sub-goals.
+DEPS~\cite{wang2023deps} introduces failure description + sub-goal
+selection in Minecraft. ReplanVLM~\cite{mei2024replanvlm} uses a VLM
+to detect failures and trigger replanning. To our knowledge GRACE is
+the first to (a) retain sub-goal boundaries \emph{at execution time}
+and (b) restrict repair to the suffix of the failed sub-goal, so that
+already-completed work and untouched future sub-goals are preserved.
