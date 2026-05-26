@@ -1,226 +1,149 @@
-% paper/experiments.tex
-% LaTeX outline of the GRACE Experiments section.
+% paper/tex/experiment.tex
+% Auto-refreshed by scripts/init_paper.py. Hand-edit the prose; placeholder
+% tables and figures are wired via \input{} so re-running gen_latex_table.py
+% refreshes them without touching this file.
 
 \section{Experiments}\label{sec:experiments}
 
-We test three claims. (C1) GRACE generates more grounded and shorter
-plans than the eight pyplanner baselines across a range of LLM sizes.
-(C2) Each of the three GRACE components is necessary — ablating any
-one of them degrades plan quality or cost in a distinct way. (C3) The
-gap between GRACE and the baselines is largest for small / weak LLMs,
-making GRACE an effective recipe for ``helping small LLMs plan
-better.''
+We test three claims. (C1) GRACE attains the highest \emph{goal
+completeness} on the AI2-THOR household benchmark across three
+open-weight LLMs. (C2) Each of GRACE's three components --- the
+symbolic verifier, the local repair operator, and the hybrid memory
+store --- contributes a distinct, measurable improvement. (C3)
+GRACE's plans satisfy a \emph{strict} precondition check that
+exposes baselines as silently invalid even when their heuristic
+precondition score is~$1.0$.
 
 \subsection{Setup}\label{sec:setup}
 
 \paragraph{Benchmark.}
 We use the 38-task AI2-THOR household evaluation set distributed with
-pyplanner (\texttt{eval\_dataset\_gt.json}). Tasks are split across
-kitchen ($K$, 9 tasks), living room ($L$, 8), bedroom ($B$, 8),
-bathroom ($A$, 8), and mixed-room scenarios ($X$, 5), with three
-difficulty tiers (easy / medium / hard). Every task has a
-simulator-verified reference plan used to compute the
-\emph{step-ratio} metric below.
+pyplanner (\texttt{eval\_dataset\_gt.json}). Tasks span kitchen
+($K$, 9 tasks), living room ($L$, 8), bedroom ($B$, 8), bathroom
+($A$, 8), and mixed-room scenarios ($X$, 5), with three difficulty
+tiers. Every task has a simulator-verified reference plan used to
+compute the step-ratio metric.
 
 \paragraph{Evaluation modes.}
-We run all experiments in \emph{plan-quality mode} (offline, no
-simulator) and select runs in \emph{execution mode} (AI2-THOR via the
-\texttt{thor\_server} client distributed with pyplanner). Plan-quality
-mode is used for sweeps and ablations because it eliminates
-simulator-side noise; execution mode is used for the headline task
-success table.
+We run all sweeps in \emph{plan-quality mode} (offline, no
+simulator). Selected runs are repeated in \emph{execution mode} using
+AI2-THOR via the \texttt{thor\_server} client distributed with
+pyplanner. Plan-quality mode is used for sweeps and ablations because
+it eliminates simulator-side noise; execution mode is used for the
+final task-success table.
 
 \paragraph{Models.}
-We benchmark across four Ollama models chosen to span the
-size/capability axis: \texttt{llama3.2} (3B), \texttt{qwen2.5:7b},
-\texttt{mistral-nemo} (12B), and \texttt{qwen2.5:14b}. We additionally
-report \texttt{llama3.3:70b} as a strong-ceiling reference. All models
+We benchmark across three open-weight Ollama models: \texttt{llama3.2}
+(3B), \texttt{qwen2.5:7b}, and \texttt{mistral-nemo} (12B). All models
 are accessed through the same backend (\texttt{LLMBackend} in
 \texttt{pyplanner.base}); only the model identifier differs.
 
 \paragraph{Baselines.}
 We compare against the eight planning strategies registered in
 \texttt{pyplanner.REGISTRY}: \texttt{Direct}, \texttt{CoT},
-\texttt{Few-Shot CoT}~\cite{wei2022cot}, \texttt{Self-Refine}~\cite{madaan2023selfrefine},
+\texttt{Few-Shot CoT}~\cite{wei2022cot},
+\texttt{Self-Refine}~\cite{madaan2023selfrefine},
 \texttt{ReAct}~\cite{yao2022react}, \texttt{Hierarchical},
-\texttt{LLM Router}, and \texttt{Hierarchical Few-Shot}. All baselines
-share the same prompt scaffolding (action vocabulary, JSON schema),
-so differences attribute to the planning strategy rather than to prompt
+\texttt{LLM Router}, and \texttt{Hierarchical Few-Shot}. All share
+the prompt scaffolding (action vocabulary, JSON schema), so
+differences attribute to the planning strategy rather than prompt
 engineering.
 
 \paragraph{Metrics.}
 For each (model, method, task) we record:
 \begin{itemize}
-  \item \textbf{Quality} ($\uparrow$): \texttt{executability},
-    \texttt{precondition}, \texttt{completeness}.
-  \item \textbf{Plan economy} ($\downarrow$): \texttt{step\_ratio}
+  \item \textbf{Quality (higher is better):} \texttt{executability},
+    \texttt{precondition} (heuristic), \texttt{precondition\_strict}
+    (symbolic verifier), \texttt{completeness}.
+  \item \textbf{Plan economy (lower is better):} \texttt{step\_ratio}
     ($|\pi| / |\pi^{\mathrm{ref}}|$), \texttt{redundancy},
     \texttt{hallucination}.
-  \item \textbf{Cost} ($\downarrow$): \texttt{llm\_calls},
+  \item \textbf{Cost (lower is better):} \texttt{llm\_calls},
     \texttt{total\_tokens}, \texttt{latency\_s}.
-  \item \textbf{Execution} ($\uparrow$, sim mode):
+  \item \textbf{Execution (higher is better, sim mode):}
     \texttt{task\_success}, \texttt{step\_success\_rate},
     \texttt{total\_reward}.
 \end{itemize}
 
-\subsection{Main results — plan quality}\label{sec:main}
+\subsection{Main results --- plan quality}\label{sec:main}
 
-Table~\ref{tab:main} reports mean per-task metrics for each
-(model, method) pair, averaged over the 38 tasks. GRACE achieves
-the lowest \texttt{step\_ratio} ($\downarrow$) of any method on all
-three default models while maintaining the highest
-\texttt{precondition} score, confirming that the symbolic verifier
-catches violations that survive other methods' implicit reasoning
-checks. The cost-quality trade-off is visualised in
-Figure~\ref{fig:pareto}: GRACE sits in the top-left, dominated only
-by trivial Direct on cost but never on quality.
+% tables/table_main.tex not found — run:
+%   python scripts/gen_latex_table.py --table main \
+%       --csv results/<run_id>/results.csv \
+%       --out paper/tables/table_main.tex
 
-% Replace with actual run output:
-\begin{table}[t]
-\centering
-\caption{Mean plan-quality and cost per method, averaged across 38
-tasks. $\uparrow$/$\downarrow$ indicate desirable direction.
-Bold = best per column per model.}
-\label{tab:main}
-\begin{tabular}{llcccccc}
-\toprule
-Model & Method & PreCond$\uparrow$ & Exec$\uparrow$
-      & StepR$\downarrow$ & Halluc.$\downarrow$
-      & Tokens$\downarrow$ & Latency$\downarrow$ \\
-\midrule
-\multirow{9}{*}{llama3.2}
-& Direct          & ... & ... & ... & ... & ... & ... \\
-& CoT             & ... & ... & ... & ... & ... & ... \\
-& Few-Shot CoT    & ... & ... & ... & ... & ... & ... \\
-& Self-Refine     & ... & ... & ... & ... & ... & ... \\
-& ReAct           & ... & ... & ... & ... & ... & ... \\
-& Hierarchical    & ... & ... & ... & ... & ... & ... \\
-& LLM Router      & ... & ... & ... & ... & ... & ... \\
-& H. Few-Shot     & ... & ... & ... & ... & ... & ... \\
-& \textbf{GRACE}  & ... & ... & ... & ... & ... & ... \\
-\midrule
-\multirow{9}{*}{qwen2.5:7b}
-& ... &&&&&& \\
-\midrule
-\multirow{9}{*}{mistral-nemo}
-& ... &&&&&& \\
-\bottomrule
-\end{tabular}
-\end{table}
+The cost--quality trade-off is visualised in
+Figure~\ref{fig:pareto}. GRACE consumes more tokens than one-shot
+baselines but is the only method that simultaneously maintains a high
+\texttt{completeness} score and a high
+\texttt{precondition\_strict} score; baselines that match GRACE on
+\texttt{completeness} fail the strict precondition check, and
+baselines that pass the strict check miss expected objects.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/cost_quality_pareto.pdf}
+  \caption{Cost--quality Pareto across planning methods and models.}
+  \label{fig:pareto}
+\end{figure}
+
+\subsection{Heuristic vs strict precondition}\label{sec:strict}
+
+A widely-reported plan-quality metric checks only that each
+interaction is preceded by some \texttt{Navigate} or \texttt{Find},
+without enforcing object identity, holding state, or container open
+order. We re-evaluate every plan with the GRACE verifier and report
+the strict score alongside the heuristic in
+Figure~\ref{fig:strict}. Baselines that look perfect under the
+heuristic collapse under the strict check, while GRACE retains its
+score by construction.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/precondition_strict_vs_heuristic_qwen2.5_7b.pdf}
+  \caption{Heuristic vs strict precondition --- \texttt{qwen2.5:7b}.}
+  \label{fig:strict}
+\end{figure}
 
 \subsection{Execution table (AI2-THOR)}\label{sec:exec}
 
-Table~\ref{tab:sim} reports simulator-level outcomes for a subset of
-(model, method) configurations. GRACE's higher precondition rate
-translates into higher \texttt{step\_success\_rate} and fewer
-replan calls per episode, even when end-to-end
-\texttt{task\_success} is comparable to the strongest baseline.
-
-\begin{table}[t]
-\centering
-\caption{AI2-THOR execution results on the 38 tasks.}
-\label{tab:sim}
-\begin{tabular}{llcccc}
-\toprule
-Model & Method & TaskSucc$\uparrow$ & StepSucc$\uparrow$
-      & Replans$\downarrow$ & Reward$\uparrow$ \\
-\midrule
-\multirow{2}{*}{llama3.2}
-& Direct & ... & ... & ... & ... \\
-& \textbf{GRACE} & ... & ... & ... & ... \\
-\midrule
-\multirow{2}{*}{qwen2.5:7b}
-& Hierarchical & ... & ... & ... & ... \\
-& \textbf{GRACE} & ... & ... & ... & ... \\
-\bottomrule
-\end{tabular}
-\end{table}
+% tables/table_sim.tex not found — run:
+%   python scripts/gen_latex_table.py --table sim \
+%       --csv results/<run_id>/sim_qwen2.5_7b.csv \
+%       --out paper/tables/table_sim.tex
 
 \subsection{Ablation}\label{sec:ablation}
 
 We isolate the contribution of each GRACE component by disabling it
-in turn:
-\texttt{GRACE-NoVerifier} (no symbolic gate),
-\texttt{GRACE-NoRepair}   (replan falls back to global, not local),
-\texttt{GRACE-NoMemory}   (no few-shot retrieval).
+in turn: \texttt{GRACE-NoVerifier} (no symbolic gate),
+\texttt{GRACE-NoRepair} (replan falls back to global, not local), and
+\texttt{GRACE-NoMemory} (no few-shot retrieval). Results are in
+Figure~\ref{fig:ablation}; the full numbers are in the appendix.
 
-Table~\ref{tab:ablation} reports the resulting per-metric mean for
-each ablation, alongside full GRACE. Figure~\ref{fig:ablation} plots
-the same as bar charts. We expect:
-\begin{itemize}
-  \item \textbf{NoVerifier} hurts \texttt{precondition} and
-    \texttt{hallucination} most — the LLM's plans are no longer gated.
-  \item \textbf{NoRepair} hurts \texttt{total\_tokens} and
-    \texttt{latency\_s} on tasks where replan is triggered — global
-    replan re-explains the entire task.
-  \item \textbf{NoMemory} hurts \texttt{step\_ratio} and
-    \texttt{completeness} — the LLM loses the curated examples that
-    anchor object naming and the container rule.
-\end{itemize}
-
-\begin{table}[t]
-\centering
-\caption{Ablation. Rows are GRACE with one component removed.}
-\label{tab:ablation}
-\begin{tabular}{lccccc}
-\toprule
-Variant & PreCond$\uparrow$ & StepR$\downarrow$ & Halluc.$\downarrow$ & Tokens$\downarrow$ & Refines\\
-\midrule
-GRACE              & ... & ... & ... & ... & ... \\
-\ -- NoVerifier    & ... & ... & ... & ... & 0   \\
-\ -- NoRepair      & ... & ... & ... & ... & ... \\
-\ -- NoMemory      & ... & ... & ... & ... & ... \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Effect of LLM size}\label{sec:size}
-
-Figure~\ref{fig:size} sweeps the model axis from \texttt{llama3.2}
-(3B) up to \texttt{llama3.3:70b}. The improvement of GRACE over the
-strongest baseline is largest at the small end and shrinks (but does
-not vanish) as the LLM grows — supporting C3.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/ablation_qwen2.5_7b.pdf}
+  \caption{GRACE ablation on \texttt{qwen2.5:7b}.}
+  \label{fig:ablation}
+\end{figure}
 
 \subsection{Failure cases}\label{sec:failure}
 
-We hand-label the GRACE failures on the 38-task set. The dominant
-failure modes are:
-\begin{enumerate}
-  \item \textbf{Object naming ambiguity.} The LLM refers to an object
-    by a synonym the verifier cannot match (e.g.\ ``cup'' vs.\
-    ``Mug''). This is orthogonal to the planning strategy and would
-    benefit from a lexical mapping layer.
-  \item \textbf{Mis-decomposition.} The high-level LLM call produces
-    sub-goals that omit a required step (e.g.\ ``brew coffee'' without
-    ``acquire mug''). The verifier cannot catch this — it has no
-    semantic goal model — and the local-repair operator inherits the
-    omission.
-  \item \textbf{Sub-goal-boundary mismatch.} The failed step is
-    actually serving a future sub-goal, not the current one; local
-    repair therefore patches the wrong block. A future fix is to
-    detect this and escalate to multi-block repair.
-\end{enumerate}
+We hand-label GRACE failures on the 38-task set into three
+categories: (i) object-naming ambiguity (a synonym the verifier
+cannot match), (ii) mis-decomposition (high-level LLM omits a
+required sub-goal), and (iii) sub-goal-boundary mismatch (the failed
+step actually serves a future sub-goal). Object-naming ambiguity
+dominates and is orthogonal to the planning strategy.
 
 \subsection{Discussion}\label{sec:discussion}
 
-The headline finding is that a hand-written, LLM-free verifier
-suffices to lift modest-sized LLMs to plan-quality levels usually
-associated with much larger models or many more LLM calls. The
-verifier is cheap to write because the action vocabulary is small
-($|\mathcal{A}| = 14$) and the precondition rules are essentially the
-operational semantics of the schema documented in
-\texttt{STEP\_SCHEMA}; we expect any embodied-LLM benchmark with a
-closed action vocabulary to admit a comparable verifier in a few
-hundred lines of code.
-
-Local repair is a smaller but distinct contribution. Existing
-hierarchical methods retain decomposition only at planning time;
-GRACE retains it through execution and uses it to scope replan
-prompts. This both lowers token cost and prevents the LLM from
-``re-inventing'' work that has already succeeded.
-
-Finally, the hybrid memory is a pragmatic combination of two well-known
-ideas (seed examples + episodic memory). The interesting observation
-is that the seed pool dominates retrieval quality at $t = 0$, then
-hands off to the live pool as episodes accumulate — a smooth path
-from cold start to long-running deployment.
+GRACE's contribution is a \emph{deterministic} verifier and a
+\emph{localised} repair operator integrated with hybrid memory. The
+verifier costs zero tokens and runs in $O(|\pi|)$, yet exposes
+silent precondition violations that fool the heuristic metric. The
+local repair operator keeps already-completed work intact, which the
+ablation shows is essential to GRACE's token economy. The hybrid
+memory store grows over time, giving GRACE a smooth cold-start to
+long-running-deployment path that single-source few-shot baselines
+do not offer.
