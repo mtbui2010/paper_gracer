@@ -1,0 +1,22 @@
+# Symlinked figures — Overleaf can't follow symlinks, exclude from upload.
+# Replace with real copies before publishing to Overleaf.
+# figures/cost_quality_pareto.eps
+# figures/cost_quality_pareto.pdf
+# figures/errors_breakdown_llama3.2.eps
+# figures/errors_breakdown_llama3.2.pdf
+# figures/errors_breakdown_mistral-nemo.eps
+# figures/errors_breakdown_mistral-nemo.pdf
+# figures/errors_breakdown_qwen2.5_7b.eps
+# figures/errors_breakdown_qwen2.5_7b.pdf
+# figures/per_metric_bars_llama3.2.eps
+# figures/per_metric_bars_llama3.2.pdf
+# figures/per_metric_bars_mistral-nemo.eps
+# figures/per_metric_bars_mistral-nemo.pdf
+# figures/per_metric_bars_qwen2.5_7b.eps
+# figures/per_metric_bars_qwen2.5_7b.pdf
+# figures/token_breakdown_llama3.2.eps
+# figures/token_breakdown_llama3.2.pdf
+# figures/token_breakdown_mistral-nemo.eps
+# figures/token_breakdown_mistral-nemo.pdf
+# figures/token_breakdown_qwen2.5_7b.eps
+# figures/token_breakdown_qwen2.5_7b.pdf
